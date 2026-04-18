@@ -18,27 +18,21 @@ ENABLED_PAGES = "1,2,3,4"
 HOTLIST_SOURCE = "zhihu"  # 在这里修改你想看的热搜源
 
 # 3. 天气城市设置
-# 高德天气城市代码（默认：天津市津南区 120112，北京是 110000）
-CITY_ADCODE = "314400"                      
-
-# 日出日落位置（支持拼音，如 "Beijing" 或 "Haidian,Beijing"）
-WTTR_LOCATION = "haining,JiaXin"            
-
-# 4. 屏幕显示文字
+# WeatherAPI 城市名称（支持拼音/英文/中文，如 "haining"、"Beijing"、"上海"）
+WEATHERAPI_LOCATION = "haining"            
 # 天气页面左上角的自定义标题，你可以改成 "北京市 | 我的温馨小窝" 等等
 CITY_DISPLAY_NAME = "海宁 | 暴富发财"      
-
 
 # =====================================================================
 # 🔒 第二部分：核心密钥区（⚠️绝对不要改这里，请在 GitHub Secrets 里配置） 🔒
 # =====================================================================
 API_KEY = os.environ.get("ZECTRIX_API_KEY")
 MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
-AMAP_KEY = os.environ.get("AMAP_WEATHER_KEY")
+# WeatherAPI 的 API Key（从 https://www.weatherapi.com/ 获取）
+WEATHERAPI_KEY = os.environ.get("WEATHERAPI_KEY")
 
 # 接口地址（自动拼接）
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
-
 
 # =====================================================================
 # ⚙️ 第三部分：底层运行逻辑（如果没有报错，不需要修改以下代码） ⚙️
@@ -256,87 +250,119 @@ def task_calendar():
         curr_y += row_h
     push_image(img, 3)
 
-# --- 混合天气获取（保持不变） ---
-def get_hybrid_weather():
+# --- 从 weatherapi.com 获取天气数据 ---
+def get_weatherapi_weather():
+    """从 weatherapi.com 获取天气数据，适配原有数据结构"""
     result = {
-        "city": CITY_DISPLAY_NAME.split("|")[0].strip(), "weather": "未知", "temp_curr": 0, 
-        "temp_low": 0, "temp_high": 0, "wind_info": "无数据", "humidity": "0%", 
-        "feel_temp": "N/A", "sunrise": "--:--", "sunset": "--:--", "forecasts": []
+        "city": CITY_DISPLAY_NAME.split("|")[0].strip(), 
+        "weather": "未知", 
+        "temp_curr": 0, 
+        "temp_low": 0, 
+        "temp_high": 0, 
+        "wind_info": "无数据", 
+        "humidity": "0%", 
+        "feel_temp": "N/A", 
+        "sunrise": "--:--", 
+        "sunset": "--:--", 
+        "forecasts": []
     }
     
-    if not AMAP_KEY:
-        print("⚠️ 未设置 AMAP_WEATHER_KEY，无法获取高德数据")
+    if not WEATHERAPI_KEY:
+        print("⚠️ 未设置 WEATHERAPI_KEY，无法获取天气数据")
         return result
 
-    # 1. 高德实时
-    try:
-        base_url = f"https://restapi.amap.com/v3/weather/weatherInfo?city={CITY_ADCODE}&key={AMAP_KEY}&extensions=base"
-        base_resp = requests.get(base_url, timeout=10).json()
-        if base_resp.get("status") == "1" and base_resp.get("lives"):
-            live = base_resp["lives"][0]
-            result["weather"] = live.get("weather", "未知")
-            result["temp_curr"] = int(live.get("temperature", 0))
-            result["humidity"] = live.get("humidity", "0") + "%"
-            wind_power_raw = live.get("windpower", "0")
-            wind_direction = live.get("winddirection", "")
-            wind_num = re.search(r'\d+', wind_power_raw)
-            wind_power = wind_num.group(0) if wind_num else "0"
-            result["wind_info"] = f"{wind_power}级 {wind_direction}"
-            # 计算体感温度
-            try:
-                wind_speed = int(wind_power)
-                if wind_speed <= 1: wind_kmh = 2
-                elif wind_speed == 2: wind_kmh = 8
-                else: wind_kmh = 15 + (wind_speed - 3) * 7
-                feel_temp = result["temp_curr"] - (wind_kmh / 15) if wind_kmh > 5 else result["temp_curr"]
-                if int(live.get("humidity", 50)) > 70: feel_temp -= 1
-                result["feel_temp"] = f"{round(feel_temp, 1)}°C"
-            except:
-                result["feel_temp"] = f"{result['temp_curr']}°C"
-    except Exception as e:
-        print(f"❌ 高德实时请求异常: {e}")
+    # WeatherAPI 请求参数
+    base_url = "https://api.weatherapi.com/v1/forecast.json"
+    params = {
+        "key": WEATHERAPI_KEY,
+        "q": WEATHERAPI_LOCATION,
+        "days": 3,  # 获取今天+未来2天预报
+        "aqi": "no",
+        "alerts": "no",
+        "lang": "zh"  # 中文返回
+    }
 
-    # 2. 高德预报
     try:
-        all_url = f"https://restapi.amap.com/v3/weather/weatherInfo?city={CITY_ADCODE}&key={AMAP_KEY}&extensions=all"
-        all_resp = requests.get(all_url, timeout=10).json()
-        if all_resp.get("status") == "1" and all_resp.get("forecasts"):
-            casts = all_resp["forecasts"][0].get("casts", [])
-            if len(casts) >= 1:
-                result["temp_low"] = int(casts[0].get("nighttemp", 0))
-                result["temp_high"] = int(casts[0].get("daytemp", 0))
-            for idx in [1, 2]:
-                if idx < len(casts):
-                    day = casts[idx]
-                    result["forecasts"].append({
-                        "date": day.get("date", "")[5:],
-                        "weather": day.get("dayweather", "未知"),
-                        "temp_low": int(day.get("nighttemp", 0)),
-                        "temp_high": int(day.get("daytemp", 0))
-                    })
-    except Exception as e:
-        print(f"❌ 高德预报请求异常: {e}")
+        resp = requests.get(base_url, params=params, headers=HEADERS, timeout=15)
+        resp.raise_for_status()  # 抛出HTTP错误
+        data = resp.json()
 
-    # 3. wttr.in 日出日落
-    try:
-        wttr_url = f"https://wttr.in/{WTTR_LOCATION}?format=j1&lang=zh"
-        wttr_resp = requests.get(wttr_url, timeout=15).json()
-        astro = wttr_resp['weather'][0]['astronomy'][0]
-        result["sunrise"] = astro['sunrise']
-        result["sunset"] = astro['sunset']
+        # 1. 实时天气数据
+        current = data["current"]
+        result["temp_curr"] = int(current["temp_c"])
+        result["weather"] = current["condition"]["text"]
+        result["humidity"] = f"{current['humidity']}%"
+        result["feel_temp"] = f"{current['feelslike_c']}°C"
+        
+        # 风力信息（风速+风向）
+        wind_kph = current["wind_kph"]
+        wind_dir = current["wind_dir"]
+        # 转换风速为风级（简化版）
+        wind_power = 0
+        if wind_kph < 1:
+            wind_power = 0
+        elif wind_kph < 6:
+            wind_power = 1
+        elif wind_kph < 12:
+            wind_power = 2
+        elif wind_kph < 20:
+            wind_power = 3
+        elif wind_kph < 29:
+            wind_power = 4
+        elif wind_kph < 39:
+            wind_power = 5
+        elif wind_kph < 50:
+            wind_power = 6
+        elif wind_kph < 62:
+            wind_power = 7
+        elif wind_kph < 75:
+            wind_power = 8
+        elif wind_kph < 89:
+            wind_power = 9
+        elif wind_kph < 103:
+            wind_power = 10
+        elif wind_kph < 118:
+            wind_power = 11
+        else:
+            wind_power = 12
+        result["wind_info"] = f"{wind_power}级 {wind_dir}"
+
+        # 2. 今日高低温
+        today_forecast = data["forecast"]["forecastday"][0]
+        result["temp_low"] = int(today_forecast["day"]["mintemp_c"])
+        result["temp_high"] = int(today_forecast["day"]["maxtemp_c"])
+
+        # 3. 日出日落
+        astro = today_forecast["astro"]
+        result["sunrise"] = astro["sunrise"]
+        result["sunset"] = astro["sunset"]
+
+        # 4. 未来2天预报
+        for i in range(1, 3):  # 取第1、2天（明天、后天）
+            if i < len(data["forecast"]["forecastday"]):
+                day_data = data["forecast"]["forecastday"][i]
+                date = day_data["date"].split("-")[1:]  # 提取月/日
+                result["forecasts"].append({
+                    "date": f"{date[0]}/{date[1]}",
+                    "weather": day_data["day"]["condition"]["text"],
+                    "temp_low": int(day_data["day"]["mintemp_c"]),
+                    "temp_high": int(day_data["day"]["maxtemp_c"])
+                })
+
     except Exception as e:
-        print(f"❌ wttr.in 请求异常: {e}")
+        print(f"❌ WeatherAPI 请求异常: {e}")
+        return result
 
     return result
 
-# --- 任务：天气看板（保持不变） ---
+# --- 任务：天气看板（适配新的天气数据源） ---
 def task_weather_dashboard():
     if "4" not in ENABLED_PAGES: return
     print("生成 Page 4: 混合天气看板...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
 
-    weather = get_hybrid_weather()
+    weather = get_weatherapi_weather()
     if weather["temp_curr"] == 0 and not weather["forecasts"]:
         draw.text((20, 50), "天气数据获取失败，请检查 API Key 或网络", font=font_item, fill=0)
         push_image(img, 4)
