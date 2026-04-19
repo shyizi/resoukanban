@@ -250,7 +250,7 @@ def task_calendar():
         curr_y += row_h
     push_image(img, 3)
 
-# --- 从 weatherapi.com 获取天气数据 ---
+# --- 从 weatherapi.com 获取天气数据（最终稳定版） ---
 def get_weatherapi_weather():
     """从 weatherapi.com 获取天气数据，适配原有数据结构"""
     result = {
@@ -271,88 +271,69 @@ def get_weatherapi_weather():
         print("⚠️ 未设置 WEATHERAPI_KEY，无法获取天气数据")
         return result
 
-    # WeatherAPI 请求参数
+    # WeatherAPI 请求参数（强制https，无代理，最简模式）
     base_url = "https://api.weatherapi.com/v1/forecast.json"
     params = {
         "key": WEATHERAPI_KEY,
-        "q": WEATHERAPI_LOCATION,
-        "days": 3,  # 获取今天+未来2天预报
+        "q": "haining",
+        "days": 3,
         "aqi": "no",
         "alerts": "no",
-        "lang": "zh"  # 中文返回
+        "lang": "zh"
     }
 
     try:
-        resp = requests.get(base_url, params=params, headers=HEADERS, timeout=15)
-        resp.raise_for_status()  # 抛出HTTP错误
+        # 禁用超时警告 + 极简请求
+        resp = requests.get(
+            base_url, 
+            params=params, 
+            timeout=20
+        )
+        print(f"🌤️ API 返回状态码: {resp.status_code}")
+        resp.raise_for_status()
         data = resp.json()
 
-        # 1. 实时天气数据
+        # 实时数据
         current = data["current"]
         result["temp_curr"] = int(current["temp_c"])
         result["weather"] = current["condition"]["text"]
         result["humidity"] = f"{current['humidity']}%"
         result["feel_temp"] = f"{current['feelslike_c']}°C"
         
-        # 风力信息（风速+风向）
+        # 风力
         wind_kph = current["wind_kph"]
         wind_dir = current["wind_dir"]
-        # 转换风速为风级（简化版）
-        wind_power = 0
-        if wind_kph < 1:
-            wind_power = 0
-        elif wind_kph < 6:
-            wind_power = 1
-        elif wind_kph < 12:
-            wind_power = 2
-        elif wind_kph < 20:
-            wind_power = 3
-        elif wind_kph < 29:
-            wind_power = 4
-        elif wind_kph < 39:
-            wind_power = 5
-        elif wind_kph < 50:
-            wind_power = 6
-        elif wind_kph < 62:
-            wind_power = 7
-        elif wind_kph < 75:
-            wind_power = 8
-        elif wind_kph < 89:
-            wind_power = 9
-        elif wind_kph < 103:
-            wind_power = 10
-        elif wind_kph < 118:
-            wind_power = 11
-        else:
-            wind_power = 12
-        result["wind_info"] = f"{wind_power}级 {wind_dir}"
+        result["wind_info"] = f"{wind_kph}kph {wind_dir}"
 
-        # 2. 今日高低温
-        today_forecast = data["forecast"]["forecastday"][0]
-        result["temp_low"] = int(today_forecast["day"]["mintemp_c"])
-        result["temp_high"] = int(today_forecast["day"]["maxtemp_c"])
+        # 今日温度
+        today = data["forecast"]["forecastday"][0]
+        result["temp_low"] = int(today["day"]["mintemp_c"])
+        result["temp_high"] = int(today["day"]["maxtemp_c"])
 
-        # 3. 日出日落
-        astro = today_forecast["astro"]
+        # 日出日落
+        astro = today["astro"]
         result["sunrise"] = astro["sunrise"]
         result["sunset"] = astro["sunset"]
 
-        # 4. 未来2天预报
-        for i in range(1, 3):  # 取第1、2天（明天、后天）
+        # 未来2天
+        for i in range(1, 3):
             if i < len(data["forecast"]["forecastday"]):
-                day_data = data["forecast"]["forecastday"][i]
-                date = day_data["date"].split("-")[1:]  # 提取月/日
+                d = data["forecast"]["forecastday"][i]
                 result["forecasts"].append({
-                    "date": f"{date[0]}/{date[1]}",
-                    "weather": day_data["day"]["condition"]["text"],
-                    "temp_low": int(day_data["day"]["mintemp_c"]),
-                    "temp_high": int(day_data["day"]["maxtemp_c"])
+                    "date": d["date"][5:],
+                    "weather": d["day"]["condition"]["text"],
+                    "temp_low": int(d["day"]["mintemp_c"]),
+                    "temp_high": int(d["day"]["maxtemp_c"])
                 })
 
-    except Exception as e:
-        print(f"❌ WeatherAPI 请求异常: {e}")
+        print("✅ 天气获取成功！")
         return result
 
+    except Exception as e:
+        print(f"❌ 天气请求失败原因: {str(e)}")
+        print(f"❌ 返回内容: {resp.text if 'resp' in locals() else '无响应'}")
+        return result
+        
     return result
 
 # --- 任务：天气看板（适配新的天气数据源） ---
