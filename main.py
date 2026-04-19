@@ -15,7 +15,7 @@ from zhdate import ZhDate
 ENABLED_PAGES = "1,2,3,4"
 
 # 2. 热搜源设置：目前支持 'zhihu', 'bilibili', 'github'
-HOTLIST_SOURCE = "zhihu"  # 在这里修改你想看的热搜源
+HOTLIST_SOURCE = "bilibili"  # 在这里修改你想看的热搜源
 
 # 3. 天气城市设置
 # WeatherAPI 城市名称（支持拼音/英文/中文，如 "haining"、"Beijing"、"上海"）
