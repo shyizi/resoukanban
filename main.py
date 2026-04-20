@@ -21,7 +21,7 @@ HOTLIST_SOURCE = "bilibili"  # 在这里修改你想看的热搜源
 # WeatherAPI 城市名称（支持拼音/英文/中文，如 "haining"、"Beijing"、"上海"）
 WEATHERAPI_LOCATION = "haining"            
 # 天气页面左上角的自定义标题，你可以改成 "北京市 | 我的温馨小窝" 等等
-CITY_DISPLAY_NAME = "海宁 | 暴富发财"      
+CITY_DISPLAY_NAME = "海宁 | 平安顺遂"      
 
 # =====================================================================
 # 🔒 第二部分：核心密钥区（⚠️绝对不要改这里，请在 GitHub Secrets 里配置） 🔒
