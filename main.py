@@ -159,7 +159,7 @@ def task_hotlist():
         push_image(img1,1)
 
 # ==========================
-# ✅ 完美黄历：强制北京时间 + 显示完全正确
+# ✅ 完美黄历：强制北京时间 + 兼容 zhdate 库
 # ==========================
 def get_huangli_font(size):
     for f in [FONT_PATH, "msyh.ttc", "simhei.ttf", "Arial"]:
@@ -192,16 +192,19 @@ def render_auto(draw, x, y, text, max_w, max_lines, init_size, line_h):
         cy += line_h
 
 def task_huangli():
-    if "2" not in ENABLED_PAGES: return
+    if "2" not in ENABLED_PAGES:
+        return
     print("✅ 生成 Page 2：今日黄历（北京时间校准）")
     W, H = 400, 300
-    img = Image.new("1", (W,H), 1)
+    img = Image.new("1", (W, H), 1)
     draw = ImageDraw.Draw(img)
 
     # 🔥 强制北京时间，彻底解决时区问题
     tz_cn = timezone(timedelta(hours=8))
     now = datetime.now(tz=tz_cn)
-    lunar = ZhDate.from_datetime(now)
+    # ✅ 关键修复：转成无时区 datetime，兼容 zhdate 库
+    now_naive = now.replace(tzinfo=None)
+    lunar = ZhDate.from_datetime(now_naive)
 
     # 基础信息
     week_map = ["一", "二", "三", "四", "五", "六", "日"]
