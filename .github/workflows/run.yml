@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 安装依赖包
-        run: pip install requests pillow zhdate
+      - name: 安装依赖（含lunar_python）
+        run: |
+          python -m pip install --upgrade pip
+          pip install lunar_python pillow requests zhdate
 
       - name: 运行！生成图片并推送
         env:
