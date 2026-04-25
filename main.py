@@ -221,7 +221,8 @@ def task_huangli():
         fonts = [
             "SourceHanSansCN-Regular.ttf",
             "msyh.ttc",
-            "simhei.ttf"
+            "simhei.ttf",
+            "font.ttf"
         ]
         for f in fonts:
             try:
