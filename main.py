@@ -278,7 +278,7 @@ def task_huangli():
     ft_info  = get_font(20)
 
     # 日期
-    now = datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
     # now = hl_datetime.datetime.now()
     solar = Solar.fromDate(now)
     lunar = Lunar.fromSolar(solar)
