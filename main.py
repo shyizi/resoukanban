@@ -77,7 +77,7 @@ def push_image(img, page_id):
         print(f"❌ Page {page_id} 推送失败: {e}")
 
 # =====================================================================
-# 📅 完整 hl.py 黄历代码（已修复版本兼容报错）
+# 📅 完整 hl.py 黄历代码（已修复大小写拼写错误）
 # =====================================================================
 
 def text_width(draw, text, font):
@@ -124,7 +124,7 @@ def render_auto_text(draw, x, y, text, max_w, max_lines, init_size, line_h):
         cy += line_h
     return cy
 
-# ✅ 已修复：lunar_python 新版方法名，无报错
+# ✅ 已修复：lunar_python 方法名大小写问题
 def get_huangli_data():
     from lunar_python import Lunar, Solar
     now = dt.datetime.now()
@@ -134,8 +134,8 @@ def get_huangli_data():
     gongli = f"{now.year}年{now.month:02d}月{now.day:02d}日 周{['一','二','三','四','五','六','日'][now.weekday()]}"
     nongli = lunar.toFullString().split(" ")[0]
     
-    # 修复报错：替换为新版方法
-    sx = lunar.getYearShengxiao()   # 年份生肖
+    # 关键修复：Xiao 首字母大写
+    sx = lunar.getYearShengXiao()   # 年份生肖
     chong = lunar.getChong()
     yi = lunar.getYi()
     ji = lunar.getJi()
@@ -341,7 +341,7 @@ if __name__ == "__main__":
         exit(1)
     print("🚀 开始推送墨水屏")
     task_hotlist()       # 第1屏：热搜
-    task_huangli()       # 第2屏：黄历（已修复）
+    task_huangli()       # 第2屏：黄历（已修复大小写）
     task_calendar()      # 第3屏：日历
     task_weather_dashboard() # 第4屏：天气
     print("🎉 全部推送完成")
