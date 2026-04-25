@@ -2,9 +2,8 @@ import os
 import requests
 import calendar
 from PIL import Image, ImageDraw, ImageFont
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zhdate import ZhDate
-import datetime as dt
 
 # =====================================================================
 # 🌟 用户自定义区
@@ -159,7 +158,7 @@ def task_hotlist():
         push_image(img1,1)
 
 # ==========================
-# ✅ 完美黄历：强制北京时间 + 兼容 zhdate 库
+# ✅ 完美黄历：不报错 + 日期100%正确
 # ==========================
 def get_huangli_font(size):
     for f in [FONT_PATH, "msyh.ttc", "simhei.ttf", "Arial"]:
@@ -194,57 +193,57 @@ def render_auto(draw, x, y, text, max_w, max_lines, init_size, line_h):
 def task_huangli():
     if "2" not in ENABLED_PAGES:
         return
-    print("✅ 生成 Page 2：今日黄历（北京时间校准）")
+    print("✅ 生成 Page 2：今日黄历（北京时间已校准）")
+
     W, H = 400, 300
     img = Image.new("1", (W, H), 1)
     draw = ImageDraw.Draw(img)
 
-    # 🔥 强制北京时间，彻底解决时区问题
-    tz_cn = timezone(timedelta(hours=8))
-    now = datetime.now(tz=tz_cn)
-    # ✅ 关键修复：转成无时区 datetime，兼容 zhdate 库
-    now_naive = now.replace(tzinfo=None)
-    lunar = ZhDate.from_datetime(now_naive)
+    # ✅ 最安全的北京时间写法：不碰时区对象，只 +8小时，绝对不报错
+    now = datetime.utcnow() + timedelta(hours=8)
+    lunar = ZhDate.from_datetime(now)
 
-    # 基础信息
     week_map = ["一", "二", "三", "四", "五", "六", "日"]
     week = week_map[now.weekday()]
     gongli = f"{now.year}年{now.month}月{now.day}日  周{week}"
 
-    # 农历
     month_cn = ["正月","二月","三月","四月","五月","六月","七月","八月","九月","十月","冬月","腊月"]
     day_cn = ["初一","初二","初三","初四","初五","初六","初七","初八","初九","初十","十一","十二","十三","十四","十五","十六","十七","十八","十九","二十","廿一","廿二","廿三","廿四","廿五","廿六","廿七","廿八","廿九","三十"]
+    
     lunar_month = month_cn[lunar.lunar_month - 1]
     lunar_day = day_cn[lunar.lunar_day - 1]
     nongli = f"{lunar_month}{lunar_day}"
 
-    # 生肖 & 冲煞
     sx_list = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]
     sx = sx_list[(lunar.lunar_year - 4) % 12]
     chong = sx_list[(sx_list.index(sx)+6)%12]
     chong_str = f"冲{chong}"
 
-    # 宜 忌
     yi = "祭祀、祈福、求嗣、开光、出行、解除、拆卸、修造、安葬、开市、交易、立券"
     ji = "作灶、嫁娶、入宅、掘井、栽种"
 
-    # 绘制
     ft_title = get_huangli_font(34)
     ft_date = get_huangli_font(22)
     ft_info = get_huangli_font(20)
+    
     title = "今日黃曆"
     tw = text_w(draw, title, ft_title)
     draw.text(((W-tw)//2,15), title, font=ft_title, fill=0)
     draw.line([(30,60),(370,60)],0,1)
+    
     dw = text_w(draw, gongli, ft_date)
     draw.text(((W-dw)//2,68), gongli, font=ft_date, fill=0)
     draw.line([(25,100),(375,100)],0,2)
+    
     draw.text((30,115), f"農曆：{nongli}", font=ft_info, fill=0)
     draw.text((30,145), f"生肖：{sx}    {chong_str}", font=ft_info, fill=0)
+    
     draw.text((30,175), "宜：", font=get_huangli_font(19), fill=0)
     render_auto(draw,65,175,yi,315,2,19,28)
+    
     draw.text((30,230), "忌：", font=get_huangli_font(19), fill=0)
     render_auto(draw,65,230,ji,315,2,19,28)
+    
     push_image(img,2)
 
 # --- 日历 ---
@@ -253,8 +252,7 @@ def task_calendar():
     print("生成 Page 3: 日历...")
     img = Image.new('1', (400,300),255)
     draw = ImageDraw.Draw(img)
-    tz_cn = timezone(timedelta(hours=8))
-    now = datetime.now(tz=tz_cn)
+    now = datetime.utcnow() + timedelta(hours=8)
     y, m, today = now.year, now.month, now.day
     draw.text((20,10), str(m), font=font_huge, fill=0)
     draw.text((90,20), now.strftime("%B"), font=font_title, fill=0)
@@ -313,8 +311,7 @@ def task_weather_dashboard():
     draw=ImageDraw.Draw(img)
     weather=get_weatherapi_weather()
     draw.text((20,10),CITY_DISPLAY_NAME,font=font_title,fill=0)
-    tz_cn = timezone(timedelta(hours=8))
-    now=datetime.now(tz=tz_cn)
+    now = datetime.utcnow() + timedelta(hours=8)
     time_text=f"更新:{now.strftime('%H:%M')}"
     draw.text((390-text_w(draw,time_text,font_small),12),time_text,font=font_small,fill=0)
     draw.text((25,40),f"{weather['temp_curr']}°C",font=font_48,fill=0)
