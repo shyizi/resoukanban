@@ -5,41 +5,28 @@ import re
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from zhdate import ZhDate
-import datetime as dt  # 避免与原有datetime冲突
+import datetime as dt
 
 # =====================================================================
-# 🌟 第一部分：用户自定义区（想改什么，直接在这里改文字和数字） 🌟
+# 🌟 第一部分：用户自定义区
 # =====================================================================
-
-# 1. 控制推送哪几页？
-# 墨水屏共 5 页：1=热搜上, 2=黄历, 3=日历, 4=天气
 ENABLED_PAGES = "1,2,3,4"
-
-# 2. 热搜源设置：目前支持 'zhihu', 'bilibili', 'github'
-HOTLIST_SOURCE = "bilibili"  # 在这里修改你想看的热搜源
-
-# 3. 天气城市设置
-# WeatherAPI 城市名称（支持拼音/英文/中文，如 "haining"、"Beijing"、"上海"）
+HOTLIST_SOURCE = "bilibili"
 WEATHERAPI_LOCATION = "haining"            
-# 天气页面左上角的自定义标题，你可以改成 "北京市 | 我的温馨小窝" 等等
 CITY_DISPLAY_NAME = "海宁 | 平安顺遂"      
 
 # =====================================================================
-# 🔒 第二部分：核心密钥区（⚠️绝对不要改这里，请在 GitHub Secrets 里配置） 🔒
+# 🔒 第二部分：核心密钥区
 # =====================================================================
 API_KEY = os.environ.get("ZECTRIX_API_KEY")
 MAC_ADDRESS = os.environ.get("ZECTRIX_MAC")
-# WeatherAPI 的 API Key（从 https://www.weatherapi.com/ 获取）
 WEATHERAPI_KEY = os.environ.get("WEATHERAPI_KEY")
 
-# 接口地址（自动拼接）
 PUSH_URL = f"https://cloud.zectrix.com/open/v1/devices/{MAC_ADDRESS}/display/image"
 
 # =====================================================================
-# ⚙️ 第三部分：底层运行逻辑（如果没有报错，不需要修改以下代码） ⚙️
+# ⚙️ 第三部分：底层运行逻辑
 # =====================================================================
-
-# --- 字体设置 ---
 FONT_PATH = "font.ttf"
 try:
     font_huge = ImageFont.truetype(FONT_PATH, 65)
@@ -53,7 +40,6 @@ except:
     print("❌ 错误: 找不到 font.ttf")
     exit(1)
 
-# 使用更通用的请求头
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
 
 # --- 工具函数 ---
@@ -143,7 +129,7 @@ def get_lunar_or_festival(y, m, d):
     except:
         return ""
 
-# --- 获取数据的逻辑 (支持切换源) ---
+# --- 热搜 ---
 def get_hotlist_data(source):
     titles = []
     print(f"正在从 {source} 获取数据...")
@@ -157,9 +143,8 @@ def get_hotlist_data(source):
             res = requests.get(url, headers=HEADERS, timeout=10).json()
             titles = [item['show_name'] for item in res['data']['trending']['list']]
         elif source == "github":
-            # GitHub 今日最热门仓库（近7天星标最多）
             date_str = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-            url = f"https://api.github.com/search/repositories?q=stars:>500+created:>{date_str}&sort=stars&order=desc"
+            url = f"https://api.github.com/search/repositories?q=stars:>50+created:>{date_str}&sort=stars&order=desc"
             res = requests.get(url, headers=HEADERS, timeout=10).json()
             titles = [f"{item['full_name']}: {item['description'][:50] if item['description'] else 'No desc'}" for item in res['items']]
         else:
@@ -169,7 +154,6 @@ def get_hotlist_data(source):
         titles = ["数据获取失败，请检查配置"] * 10
     return titles[:20]
 
-# --- 任务：热搜看板 ---
 def task_hotlist():
     source_map = {"zhihu": "知乎热榜", "bilibili": "B站热搜", "github": "GitHub 热门"}
     titles = get_hotlist_data(HOTLIST_SOURCE)
@@ -199,48 +183,42 @@ def task_hotlist():
                 draw.line([(45, y - item_gap/2), (380, y - item_gap/2)], fill=0, width=1)
         return last_idx
 
-    # 只推送第1屏的热搜，第2屏改为黄历
     if "1" in ENABLED_PAGES:
         img1 = Image.new('1', (400, 300), color=255)
-        draw_list(ImageDraw.Draw(img1), f"◆ {title_display} (一)", titles, 0)
+        draw_list(ImageDraw.Draw(img1), f"◆ {title_display}", titles, 0)
         push_image(img1, 1)
 
-# --- 新增：黄历功能（整合hl.py） ---
-# 兼容原有字体设置，优先使用font.ttf
+# ==========================
+# ✅ 完整版黄历（来自hl.py，已修复）
+# ==========================
 def get_huangli_font(size):
-    try:
-        return ImageFont.truetype(FONT_PATH, size)
-    except:
-        # 备用字体加载逻辑
-        fonts = [
-            "SourceHanSansCN-Regular.ttf",
-            "msyh.ttc",
-            "simhei.ttf"
-        ]
-        for f in fonts:
-            try:
-                return ImageFont.truetype(f, size)
-            except:
-                continue
-        return ImageFont.load_default(size=size)
+    fonts = [
+        FONT_PATH,
+        "SourceHanSansCN-Regular.ttf",
+        "msyh.ttc",
+        "simhei.ttf"
+    ]
+    for f in fonts:
+        try:
+            return ImageFont.truetype(f, size)
+        except:
+            continue
+    return ImageFont.load_default(size=size)
 
-# 计算文字宽度
-def text_width(draw, text, font):
+def text_w(draw, text, font):
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0]
 
-# 智能缩放 + 自动换行
-def render_auto_text(draw, x, y, text, max_w, max_lines, init_size, line_h):
-    one_char = text_width(draw, "一", get_huangli_font(init_size))
-    usable_w = max_w - one_char  # 留空1个汉字
-
+def render_auto(draw, x, y, text, max_w, max_lines, init_size, line_h):
+    one_char = text_w(draw, "一", get_huangli_font(init_size))
+    usable_w = max_w - one_char
     font = get_huangli_font(init_size)
     while True:
         lines = []
         current = ""
         ok = True
         for c in text:
-            if text_width(draw, current + c, font) <= usable_w:
+            if text_w(draw, current + c, font) <= usable_w:
                 current += c
             else:
                 lines.append(current)
@@ -252,108 +230,74 @@ def render_auto_text(draw, x, y, text, max_w, max_lines, init_size, line_h):
             lines.append(current)
         if ok and len(lines) <= max_lines:
             break
-        # 智能缩小字体
         font = get_huangli_font(font.size - 1)
-
     cy = y
     for line in lines:
         draw.text((x, cy), line, font=font, fill=0)
         cy += line_h
     return cy
 
-# 黄历数据获取（使用zhdate替代lunar_python，避免额外依赖）
-def get_huangli_data():
-    now = dt.datetime.now()
-    # 公历转农历
-    lunar = ZhDate.from_datetime(now)
-    lunar_year, lunar_month, lunar_day = lunar.lunar_year, lunar.lunar_month, lunar.lunar_day
-    
-    # 星期映射
-    week_map = ["一", "二", "三", "四", "五", "六", "日"]
-    week = week_map[now.weekday()]
-    
-    # 公历信息
-    gongli = f"{now.year}年{now.month}月{now.day}日  周{week}"
-    
-    # 农历信息（简化版，如需完整黄历需补充）
-    lunar_month_cn = ["正月","二月","三月","四月","五月","六月","七月","八月","九月","十月","冬月","腊月"][lunar_month-1]
-    lunar_day_cn = ["初一","初二","初三","初四","初五","初六","初七","初八","初九","初十",
-                    "十一","十二","十三","十四","十五","十六","十七","十八","十九","二十",
-                    "廿一","廿二","廿三","廿四","廿五","廿六","廿七","廿八","廿九","三十"][lunar_day-1]
-    nongli = f"{lunar_year}年{lunar_month_cn}{lunar_day_cn}"
-    
-    # 生肖计算（简化版）
-    shengxiao = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]
-    sx = shengxiao[(lunar_year - 1900) % 12]
-    
-    # 宜/忌 示例（如需真实黄历数据，需对接黄历API或扩展数据）
-    yi = "出行、纳财、开市、交易、祈福、祭祀"
-    ji = "动土、破土、安葬、修坟、嫁娶、入宅"
-    
-    # 冲煞（简化示例）
-    chong_shengxiao = shengxiao[(shengxiao.index(sx) + 6) % 12]
-    chong_str = f"沖{chong_shengxiao}"
-    
-    return {
-        "gongli": gongli,
-        "nongli": nongli,
-        "sx": sx,
-        "chong_str": chong_str,
-        "yi": yi,
-        "ji": ji
-    }
-
-# 任务：黄历看板（第2屏）
 def task_huangli():
-    if "2" not in ENABLED_PAGES: return
-    print("生成 Page 2: 今日黃曆...")
-    
-    # 初始化画布
+    if "2" not in ENABLED_PAGES:
+        return
+    print("✅ 生成 Page 2：今日黄历")
+
     W, H = 400, 300
     img = Image.new("1", (W, H), 1)
     draw = ImageDraw.Draw(img)
-    
-    # 获取黄历数据
-    huangli_data = get_huangli_data()
-    
-    # 字体设置
+
     ft_title = get_huangli_font(34)
-    ft_date = get_huangli_font(22)
-    ft_info = get_huangli_font(20)
-    
-    # 绘制标题
+    ft_date  = get_huangli_font(22)
+    ft_info  = get_huangli_font(20)
+
+    now = dt.datetime.now()
+    lunar = ZhDate.from_datetime(now)
+
+    week_map = ["一", "二", "三", "四", "五", "六", "日"]
+    week = week_map[now.weekday()]
+    gongli = f"{now.year}年{now.month}月{now.day}日  周{week}"
+
+    # 农历
+    month_cn = ["正月","二月","三月","四月","五月","六月","七月","八月","九月","十月","冬月","腊月"]
+    day_cn = ["初一","初二","初三","初四","初五","初六","初七","初八","初九","初十",
+              "十一","十二","十三","十四","十五","十六","十七","十八","十九","二十",
+              "廿一","廿二","廿三","廿四","廿五","廿六","廿七","廿八","廿九","三十"]
+    lunar_month = month_cn[lunar.lunar_month - 1]
+    lunar_day = day_cn[lunar.lunar_day - 1]
+    nongli = f"{lunar_month}{lunar_day}"
+
+    # 生肖
+    sx_list = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]
+    sx = sx_list[(lunar.lunar_year - 4) % 12]
+    chong = sx_list[(sx_list.index(sx) + 6) % 12]
+    chong_str = f"冲{chong}"
+
+    # 宜、忌（固定示例，可对接API）
+    yi = "祭祀、祈福、求嗣、开光、出行、解除、拆卸、修造、安葬、开市、交易、立券"
+    ji = "作灶、嫁娶、入宅、掘井、栽种"
+
+    # 绘制
     title = "今日黃曆"
-    tw = text_width(draw, title, ft_title)
+    tw = text_w(draw, title, ft_title)
     draw.text(((W - tw)//2, 15), title, font=ft_title, fill=0)
-    
-    # 分隔线
     draw.line([(30, 60), (370, 60)], 0, 1)
-    
-    # 公历日期
-    dw = text_width(draw, huangli_data["gongli"], ft_date)
-    draw.text(((W - dw)//2, 68), huangli_data["gongli"], font=ft_date, fill=0)
-    
-    # 分隔线
+
+    dw = text_w(draw, gongli, ft_date)
+    draw.text(((W - dw)//2, 68), gongli, font=ft_date, fill=0)
     draw.line([(25, 100), (375, 100)], 0, 2)
-    
-    # 农历信息
-    draw.text((30, 115), f"農曆：{huangli_data['nongli']}", font=ft_info, fill=0)
-    
-    # 生肖和冲煞
-    draw.text((30, 145), f"生肖：{huangli_data['sx']}    {huangli_data['chong_str']}", font=ft_info, fill=0)
-    
-    # 宜：智能缩放排版
+
+    draw.text((30, 115), f"農曆：{nongli}", font=ft_info, fill=0)
+    draw.text((30, 145), f"生肖：{sx}    {chong_str}", font=ft_info, fill=0)
+
     draw.text((30, 175), "宜：", font=get_huangli_font(19), fill=0)
-    render_auto_text(draw, 65, 175, huangli_data["yi"], 315, 2, 19, 28)
-    
-    # 忌：智能缩放排版
+    render_auto(draw, 65, 175, yi, 315, 2, 19, 28)
+
     draw.text((30, 230), "忌：", font=get_huangli_font(19), fill=0)
-    render_auto_text(draw, 65, 230, huangli_data["ji"], 315, 2, 19, 28)
-    
-    # 推送黄历图片到第2屏
+    render_auto(draw, 65, 230, ji, 315, 2, 19, 28)
+
     push_image(img, 2)
 
-# --- 任务：日历（保持不变） ---
+# --- 日历 ---
 def task_calendar():
     if "3" not in ENABLED_PAGES: return
     print("生成 Page 3: 日历...")
@@ -393,9 +337,8 @@ def task_calendar():
         curr_y += row_h
     push_image(img, 3)
 
-# --- 从 weatherapi.com 获取天气数据（最终稳定版） ---
+# --- 天气 ---
 def get_weatherapi_weather():
-    """从 weatherapi.com 获取天气数据，适配原有数据结构"""
     result = {
         "city": CITY_DISPLAY_NAME.split("|")[0].strip(), 
         "weather": "未知", 
@@ -411,14 +354,13 @@ def get_weatherapi_weather():
     }
     
     if not WEATHERAPI_KEY:
-        print("⚠️ 未设置 WEATHERAPI_KEY，无法获取天气数据")
+        print("⚠️ 未设置 WEATHERAPI_KEY")
         return result
 
-    # WeatherAPI 请求参数（强制https，无代理，最简模式）
     base_url = "https://api.weatherapi.com/v1/forecast.json"
     params = {
         "key": WEATHERAPI_KEY,
-        "q": WEATHERAPI_LOCATION,  # 修复硬编码问题，使用配置的城市
+        "q": WEATHERAPI_LOCATION,
         "days": 3,
         "aqi": "no",
         "alerts": "no",
@@ -426,39 +368,23 @@ def get_weatherapi_weather():
     }
 
     try:
-        # 禁用超时警告 + 极简请求
-        resp = requests.get(
-            base_url, 
-            params=params, 
-            timeout=20
-        )
-        print(f"🌤️ API 返回状态码: {resp.status_code}")
+        resp = requests.get(base_url, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
-
-        # 实时数据
         current = data["current"]
         result["temp_curr"] = int(current["temp_c"])
         result["weather"] = current["condition"]["text"]
         result["humidity"] = f"{current['humidity']}%"
         result["feel_temp"] = f"{current['feelslike_c']}°C"
-        
-        # 风力
         wind_kph = current["wind_kph"]
         wind_dir = current["wind_dir"]
         result["wind_info"] = f"{wind_kph}kph {wind_dir}"
-
-        # 今日温度
         today = data["forecast"]["forecastday"][0]
         result["temp_low"] = int(today["day"]["mintemp_c"])
         result["temp_high"] = int(today["day"]["maxtemp_c"])
-
-        # 日出日落
         astro = today["astro"]
         result["sunrise"] = astro["sunrise"]
         result["sunset"] = astro["sunset"]
-
-        # 未来2天
         for i in range(1, 3):
             if i < len(data["forecast"]["forecastday"]):
                 d = data["forecast"]["forecastday"][i]
@@ -468,32 +394,23 @@ def get_weatherapi_weather():
                     "temp_low": int(d["day"]["mintemp_c"]),
                     "temp_high": int(d["day"]["maxtemp_c"])
                 })
-
-        print("✅ 天气获取成功！")
         return result
-
     except Exception as e:
-        print(f"❌ 天气请求失败原因: {str(e)}")
-        print(f"❌ 返回内容: {resp.text if 'resp' in locals() else '无响应'}")
+        print(f"❌ 天气请求失败: {e}")
         return result
-        
-    return result
 
-# --- 任务：天气看板（适配新的天气数据源） ---
 def task_weather_dashboard():
     if "4" not in ENABLED_PAGES: return
-    print("生成 Page 4: 混合天气看板...")
+    print("生成 Page 4: 天气...")
     img = Image.new('1', (400, 300), color=255)
     draw = ImageDraw.Draw(img)
-
     weather = get_weatherapi_weather()
     if weather["temp_curr"] == 0 and not weather["forecasts"]:
-        draw.text((20, 50), "天气数据获取失败，请检查 API Key 或网络", font=font_item, fill=0)
+        draw.text((20, 50), "天气数据获取失败", font=font_item, fill=0)
         push_image(img, 4)
         return
 
     draw.text((20, 10), CITY_DISPLAY_NAME, font=font_title, fill=0)
-    
     now_beijing = datetime.utcnow() + timedelta(hours=8)
     update_time = now_beijing.strftime("%H:%M")
     time_text = f"更新: {update_time}"
@@ -507,14 +424,7 @@ def task_weather_dashboard():
     draw.text((25, 40), f"{weather['temp_curr']}°C", font=font_48, fill=0)
     draw.text((25, 100), f"{weather['temp_low']}°/{weather['temp_high']}°", font=font_item, fill=0)
     draw.text((150, 45), f"{weather['weather']}", font=font_36, fill=0)
-
-    # draw.rounded_rectangle([(235, 45), (385, 130)], radius=8, outline=0, fill=0)
-    # draw.text((245, 45), f"{weather['wind_info']}", font=font_small, fill=255)
-    # draw.text((245, 70), f"湿度 {weather['humidity']}", font=font_small, fill=255)
-    # draw.text((245, 95), f"体感 {weather['feel_temp']}", font=font_small, fill=255)
-
     draw.text((25, 135), f"日出 {weather['sunrise']}   日落 {weather['sunset']}", font=font_item, fill=0)
-
     draw.line([(20, 160), (380, 160)], fill=0, width=1)
     x_positions = [30, 200]
     for i, day in enumerate(weather['forecasts'][:2]):
@@ -522,30 +432,22 @@ def task_weather_dashboard():
         draw.text((x, 175), day["date"], font=font_item, fill=0)
         draw.text((x, 200), day["weather"], font=font_item, fill=0)
         draw.text((x, 220), f"{day['temp_low']}°~{day['temp_high']}°", font=font_item, fill=0)
-
     advice = get_clothing_advice(weather['temp_curr'])
     draw.line([(20, 250), (380, 250)], fill=0, width=1)
     advice_lines = [advice[i:i+18] for i in range(0, len(advice), 18)]
     for i, line in enumerate(advice_lines[:2]):
         draw.text((20, 262 + i*24), f"[衣] {line}", font=font_item, fill=0)
-
     push_image(img, 4)
 
 # ================= 主程序 =================
 if __name__ == "__main__":
     if not API_KEY or not MAC_ADDRESS:
-        print("❌ 错误: 请先在 GitHub Secrets 中配置 ZECTRIX_API_KEY 和 ZECTRIX_MAC")
+        print("❌ 请配置 GitHub Secrets")
         exit(1)
         
-    print("🚀 开始执行墨水屏推送任务...")
-    
-    # 执行热搜任务（仅第1屏）
+    print("🚀 开始推送...")
     task_hotlist()
-    # 执行黄历任务（第2屏）
     task_huangli()
-    # 执行日历任务（第3屏）
     task_calendar()
-    # 执行天气任务（第4屏）
     task_weather_dashboard()
-        
-    print("🎉 所有任务执行完毕！")
+    print("🎉 全部完成！")
