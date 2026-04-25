@@ -8,30 +8,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  # 添加这一行，允许推送代码
     steps:
-      - name: 获取代码
+      - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 获取完整历史，以便后续提交
 
-      - name: 安装 Python 环境
+      - name: 设置 Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 安装依赖（含lunar_python）
+      - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
           pip install lunar_python pillow requests zhdate
 
-      - name: 运行！生成图片并推送
+      - name: 运行墨水屏推送
         env:
           ZECTRIX_API_KEY: ${{ secrets.ZECTRIX_API_KEY }}
           ZECTRIX_MAC: ${{ secrets.ZECTRIX_MAC }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WEATHERAPI_KEY: ${{ secrets.WEATHERAPI_KEY }}
         run: python main.py
-
-    
