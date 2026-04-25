@@ -77,7 +77,7 @@ def push_image(img, page_id):
         print(f"❌ Page {page_id} 推送失败: {e}")
 
 # =====================================================================
-# 📅 以下是 **完整复制 hl.py 的全部黄历代码**（100% 原版）
+# 📅 完整 hl.py 黄历代码（已修复版本兼容报错）
 # =====================================================================
 
 def text_width(draw, text, font):
@@ -124,63 +124,72 @@ def render_auto_text(draw, x, y, text, max_w, max_lines, init_size, line_h):
         cy += line_h
     return cy
 
+# ✅ 已修复：lunar_python 新版方法名，无报错
 def get_huangli_data():
     from lunar_python import Lunar, Solar
     now = dt.datetime.now()
     solar = Solar(now.year, now.month, now.day, now.hour, now.minute, now.second)
     lunar = Lunar.fromSolar(solar)
+    
     gongli = f"{now.year}年{now.month:02d}月{now.day:02d}日 周{['一','二','三','四','五','六','日'][now.weekday()]}"
     nongli = lunar.toFullString().split(" ")[0]
-    sx = lunar.getShengXiao()
+    
+    # 修复报错：替换为新版方法
+    sx = lunar.getYearShengxiao()   # 年份生肖
     chong = lunar.getChong()
-    chong_str = f"冲{chong}"
     yi = lunar.getYi()
     ji = lunar.getJi()
+    
     return {
         "gongli": gongli,
         "nongli": nongli,
         "sx": sx,
-        "chong_str": chong_str,
+        "chong_str": f"冲{chong}",
         "yi": "、".join(yi),
         "ji": "、".join(ji)
     }
 
-# 直接生成黄历图片（hl.py 原版）
+# 生成黄历图片（hl.py 原版）
 def generate_huangli_image():
     W, H = 400, 300
     img = Image.new("1", (W, H), 1)
     draw = ImageDraw.Draw(img)
     data = get_huangli_data()
+    
     ft_title = get_huangli_font(34)
     ft_date = get_huangli_font(22)
     ft_info = get_huangli_font(20)
+    
     title = "今日黃曆"
     tw = text_width(draw, title, ft_title)
     draw.text(((W - tw)//2, 15), title, font=ft_title, fill=0)
     draw.line([(30, 60), (370, 60)], 0, 1)
+    
     dw = text_width(draw, data["gongli"], ft_date)
     draw.text(((W - dw)//2, 68), data["gongli"], font=ft_date, fill=0)
     draw.line([(25, 100), (375, 100)], 0, 2)
+    
     draw.text((30, 115), f"農曆：{data['nongli']}", font=ft_info, fill=0)
     draw.text((30, 145), f"生肖：{data['sx']}    {data['chong_str']}", font=ft_info, fill=0)
+    
     draw.text((30, 175), "宜：", font=get_huangli_font(19), fill=0)
     render_auto_text(draw, 65, 175, data["yi"], 315, 2, 19, 28)
+    
     draw.text((30, 230), "忌：", font=get_huangli_font(19), fill=0)
     render_auto_text(draw, 65, 230, data["ji"], 315, 2, 19, 28)
+    
     return img
 
-# =====================================================================
-# 🚀 任务：黄历第2屏（直接用 hl.py 生成的图）
-# =====================================================================
+# 第2屏：黄历
 def task_huangli():
     if "2" not in ENABLED_PAGES:
         return
-    print("📅 生成黄历图片（来自 hl.py 原版逻辑）")
+    print("📅 生成黄历图片（hl.py原版）")
     img = generate_huangli_image()
     push_image(img, 2)
 
 # =====================================================================
-# 热搜、日历、天气（完全保持你原来的逻辑不变）
+# 原有功能：热搜、日历、天气（完全不变）
 # =====================================================================
 
 def get_solar_term(year, month, day):
@@ -332,7 +341,7 @@ if __name__ == "__main__":
         exit(1)
     print("🚀 开始推送墨水屏")
     task_hotlist()       # 第1屏：热搜
-    task_huangli()       # 第2屏：黄历（hl.py原版）
+    task_huangli()       # 第2屏：黄历（已修复）
     task_calendar()      # 第3屏：日历
     task_weather_dashboard() # 第4屏：天气
     print("🎉 全部推送完成")
