@@ -5,13 +5,14 @@ import re
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from zhdate import ZhDate
+import datetime as dt  # 避免与原有datetime冲突
 
 # =====================================================================
 # 🌟 第一部分：用户自定义区（想改什么，直接在这里改文字和数字） 🌟
 # =====================================================================
 
 # 1. 控制推送哪几页？
-# 墨水屏共 5 页：1=热搜上, 2=热搜下, 3=日历, 4=天气
+# 墨水屏共 5 页：1=热搜上, 2=黄历, 3=日历, 4=天气
 ENABLED_PAGES = "1,2,3,4"
 
 # 2. 热搜源设置：目前支持 'zhihu', 'bilibili', 'github'
@@ -198,17 +199,159 @@ def task_hotlist():
                 draw.line([(45, y - item_gap/2), (380, y - item_gap/2)], fill=0, width=1)
         return last_idx
 
+    # 只推送第1屏的热搜，第2屏改为黄历
     if "1" in ENABLED_PAGES:
         img1 = Image.new('1', (400, 300), color=255)
-        next_s = draw_list(ImageDraw.Draw(img1), f"◆ {title_display} (一)", titles, 0)
+        draw_list(ImageDraw.Draw(img1), f"◆ {title_display} (一)", titles, 0)
         push_image(img1, 1)
-    else:
-        next_s = 7 
 
-    if "2" in ENABLED_PAGES:
-        img2 = Image.new('1', (400, 300), color=255)
-        draw_list(ImageDraw.Draw(img2), f"◆ {title_display} (二)", titles, next_s)
-        push_image(img2, 2)
+# --- 新增：黄历功能（整合hl.py） ---
+# 兼容原有字体设置，优先使用font.ttf
+def get_huangli_font(size):
+    try:
+        return ImageFont.truetype(FONT_PATH, size)
+    except:
+        # 备用字体加载逻辑
+        fonts = [
+            "SourceHanSansCN-Regular.ttf",
+            "msyh.ttc",
+            "simhei.ttf"
+        ]
+        for f in fonts:
+            try:
+                return ImageFont.truetype(f, size)
+            except:
+                continue
+        return ImageFont.load_default(size=size)
+
+# 计算文字宽度
+def text_width(draw, text, font):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]
+
+# 智能缩放 + 自动换行
+def render_auto_text(draw, x, y, text, max_w, max_lines, init_size, line_h):
+    one_char = text_width(draw, "一", get_huangli_font(init_size))
+    usable_w = max_w - one_char  # 留空1个汉字
+
+    font = get_huangli_font(init_size)
+    while True:
+        lines = []
+        current = ""
+        ok = True
+        for c in text:
+            if text_width(draw, current + c, font) <= usable_w:
+                current += c
+            else:
+                lines.append(current)
+                current = c
+                if len(lines) >= max_lines:
+                    ok = False
+                    break
+        if current:
+            lines.append(current)
+        if ok and len(lines) <= max_lines:
+            break
+        # 智能缩小字体
+        font = get_huangli_font(font.size - 1)
+
+    cy = y
+    for line in lines:
+        draw.text((x, cy), line, font=font, fill=0)
+        cy += line_h
+    return cy
+
+# 黄历数据获取（使用zhdate替代lunar_python，避免额外依赖）
+def get_huangli_data():
+    now = dt.datetime.now()
+    # 公历转农历
+    lunar = ZhDate.from_datetime(now)
+    lunar_year, lunar_month, lunar_day = lunar.lunar_year, lunar.lunar_month, lunar.lunar_day
+    
+    # 星期映射
+    week_map = ["一", "二", "三", "四", "五", "六", "日"]
+    week = week_map[now.weekday()]
+    
+    # 公历信息
+    gongli = f"{now.year}年{now.month}月{now.day}日  周{week}"
+    
+    # 农历信息（简化版，如需完整黄历需补充）
+    lunar_month_cn = ["正月","二月","三月","四月","五月","六月","七月","八月","九月","十月","冬月","腊月"][lunar_month-1]
+    lunar_day_cn = ["初一","初二","初三","初四","初五","初六","初七","初八","初九","初十",
+                    "十一","十二","十三","十四","十五","十六","十七","十八","十九","二十",
+                    "廿一","廿二","廿三","廿四","廿五","廿六","廿七","廿八","廿九","三十"][lunar_day-1]
+    nongli = f"{lunar_year}年{lunar_month_cn}{lunar_day_cn}"
+    
+    # 生肖计算（简化版）
+    shengxiao = ["鼠","牛","虎","兔","龙","蛇","马","羊","猴","鸡","狗","猪"]
+    sx = shengxiao[(lunar_year - 1900) % 12]
+    
+    # 宜/忌 示例（如需真实黄历数据，需对接黄历API或扩展数据）
+    yi = "出行、纳财、开市、交易、祈福、祭祀"
+    ji = "动土、破土、安葬、修坟、嫁娶、入宅"
+    
+    # 冲煞（简化示例）
+    chong_shengxiao = shengxiao[(shengxiao.index(sx) + 6) % 12]
+    chong_str = f"沖{chong_shengxiao}"
+    
+    return {
+        "gongli": gongli,
+        "nongli": nongli,
+        "sx": sx,
+        "chong_str": chong_str,
+        "yi": yi,
+        "ji": ji
+    }
+
+# 任务：黄历看板（第2屏）
+def task_huangli():
+    if "2" not in ENABLED_PAGES: return
+    print("生成 Page 2: 今日黃曆...")
+    
+    # 初始化画布
+    W, H = 400, 300
+    img = Image.new("1", (W, H), 1)
+    draw = ImageDraw.Draw(img)
+    
+    # 获取黄历数据
+    huangli_data = get_huangli_data()
+    
+    # 字体设置
+    ft_title = get_huangli_font(34)
+    ft_date = get_huangli_font(22)
+    ft_info = get_huangli_font(20)
+    
+    # 绘制标题
+    title = "今日黃曆"
+    tw = text_width(draw, title, ft_title)
+    draw.text(((W - tw)//2, 15), title, font=ft_title, fill=0)
+    
+    # 分隔线
+    draw.line([(30, 60), (370, 60)], 0, 1)
+    
+    # 公历日期
+    dw = text_width(draw, huangli_data["gongli"], ft_date)
+    draw.text(((W - dw)//2, 68), huangli_data["gongli"], font=ft_date, fill=0)
+    
+    # 分隔线
+    draw.line([(25, 100), (375, 100)], 0, 2)
+    
+    # 农历信息
+    draw.text((30, 115), f"農曆：{huangli_data['nongli']}", font=ft_info, fill=0)
+    
+    # 生肖和冲煞
+    draw.text((30, 145), f"生肖：{huangli_data['sx']}    {huangli_data['chong_str']}", font=ft_info, fill=0)
+    
+    # 宜：智能缩放排版
+    draw.text((30, 175), "宜：", font=get_huangli_font(19), fill=0)
+    render_auto_text(draw, 65, 175, huangli_data["yi"], 315, 2, 19, 28)
+    
+    # 忌：智能缩放排版
+    draw.text((30, 230), "忌：", font=get_huangli_font(19), fill=0)
+    render_auto_text(draw, 65, 230, huangli_data["ji"], 315, 2, 19, 28)
+    
+    # 推送黄历图片到第2屏
+    push_image(img, 2)
 
 # --- 任务：日历（保持不变） ---
 def task_calendar():
@@ -275,7 +418,7 @@ def get_weatherapi_weather():
     base_url = "https://api.weatherapi.com/v1/forecast.json"
     params = {
         "key": WEATHERAPI_KEY,
-        "q": "haining",
+        "q": WEATHERAPI_LOCATION,  # 修复硬编码问题，使用配置的城市
         "days": 3,
         "aqi": "no",
         "alerts": "no",
@@ -396,11 +539,13 @@ if __name__ == "__main__":
         
     print("🚀 开始执行墨水屏推送任务...")
     
-    # 执行热搜任务
+    # 执行热搜任务（仅第1屏）
     task_hotlist()
-    # 执行日历任务
+    # 执行黄历任务（第2屏）
+    task_huangli()
+    # 执行日历任务（第3屏）
     task_calendar()
-    # 执行天气任务
+    # 执行天气任务（第4屏）
     task_weather_dashboard()
         
     print("🎉 所有任务执行完毕！")
