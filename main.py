@@ -212,7 +212,7 @@ def task_huangli():
     if "2" not in ENABLED_PAGES: return
     print("生成 Page 2: 今日黄历...")
     
-    # hl.py 核心逻辑（完全复制，未修改）
+    # hl.py 核心逻辑（修复日期获取问题）
     W = 400
     H = 300
     
@@ -277,8 +277,16 @@ def task_huangli():
     ft_date  = get_font(22)
     ft_info  = get_font(20)
 
-    # 日期
-    now = hl_datetime.datetime.now()
+    # ========== 核心修复：获取正确的北京时间（UTC+8） ==========
+    # 原问题：直接用本地时间可能存在时区偏差，改为强制UTC+8计算当前日期
+    now_utc = datetime.utcnow()
+    now = now_utc + timedelta(hours=8)  # 转换为北京时间
+    # 确保取到的是当日的日期（年/月/日）
+    today = now.date()
+    # 重新构造datetime，避免时分秒干扰
+    now = hl_datetime.datetime(today.year, today.month, today.day)
+    
+    # 重新转换Solar/Lunar，基于正确的北京时间
     solar = Solar.fromDate(now)
     lunar = Lunar.fromSolar(solar)
 
