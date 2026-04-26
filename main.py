@@ -384,7 +384,7 @@ def get_weatherapi_weather():
     base_url = "https://api.weatherapi.com/v1/forecast.json"
     params = {
         "key": WEATHERAPI_KEY,
-        "q": "haining",
+        "q": WEATHERAPI_LOCATION,
         "days": 3,
         "aqi": "no",
         "alerts": "no",
